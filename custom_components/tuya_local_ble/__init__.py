@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from bleak_retry_connector import BLEAK_RETRY_EXCEPTIONS as BLEAK_EXCEPTIONS, get_device
 
@@ -61,15 +62,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await device.update()
     
+    last_raykube_advertisement_update = 0.0
+
+    async def _async_update_raykube_from_advertisement() -> None:
+        """Best-effort Raykube state refresh after a BLE advertisement."""
+        try:
+            await device.update()
+        except BLEAK_EXCEPTIONS:
+            _LOGGER.debug(
+                "%s: Raykube advertisement-triggered update failed",
+                address,
+                exc_info=True,
+            )
+        except Exception:
+            _LOGGER.debug(
+                "%s: Raykube advertisement-triggered update failed unexpectedly",
+                address,
+                exc_info=True,
+            )
+
     @callback
     def _async_update_ble(
         service_info: bluetooth.BluetoothServiceInfoBleak,
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Update from a ble callback."""
+        nonlocal last_raykube_advertisement_update
         device.set_ble_device_and_advertisement_data(
             service_info.device, service_info.advertisement
         )
+        if device.product_id == "hc7n0urm":
+            # Raykube locks do not push manual/keypad state changes while the
+            # integration is disconnected. A fresh advertisement after a
+            # physical action is the safest low-power cue we have to reconnect
+            # and request status, without keeping a permanent BLE session open.
+            now = time.monotonic()
+            if now - last_raykube_advertisement_update >= 300:
+                last_raykube_advertisement_update = now
+                hass.async_create_task(_async_update_raykube_from_advertisement())
 
     entry.async_on_unload(
         bluetooth.async_register_callback(

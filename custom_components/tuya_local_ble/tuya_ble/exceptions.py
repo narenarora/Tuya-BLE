@@ -36,5 +36,8 @@ class TuyaBLEDataLengthError(TuyaBLEError):
 class TuyaBLEDeviceError(TuyaBLEError):
     """Raised when Tuya BLE device returned error in response to command."""
 
-    def __init__(self, code: int) -> None:
-        super().__init__(("BLE deice returned error code %s") % (code))
+    def __init__(self, code: int | str) -> None:
+        if isinstance(code, str):
+            super().__init__(code)
+        else:
+            super().__init__(("BLE device returned error code %s") % (code))
