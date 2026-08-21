@@ -325,28 +325,33 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the selected entity option to represent the entity state."""
-        # Raw value
-        value: str | None = None
         datapoint = self._device.datapoints[self._mapping.dp_id]
-        if datapoint:
-            value = datapoint.value
-            if value >= 0 and value < len(self._attr_options):
-                return self._attr_options[value]
-            else:
-                return value
+        if not datapoint:
+            return None
+        value = datapoint.value
+        try:
+            int_value = int(value)
+        except (TypeError, ValueError):
+            return value if isinstance(value, str) else None
+        if 0 <= int_value < len(self._attr_options):
+            return self._attr_options[int_value]
         return None
 
-    def select_option(self, value: str) -> None:
-        """Change the selected option."""
-        if value in self._attr_options:
-            int_value = self._attr_options.index(value)
-            datapoint = self._device.datapoints.get_or_create(
-                self._mapping.dp_id,
-                TuyaBLEDataPointType.DT_ENUM,
-                int_value,
-            )
-            if datapoint:
-                self._hass.create_task(datapoint.set_value(int_value))
+    async def async_select_option(self, option: str) -> None:
+        """Change the selected option and push local state immediately."""
+        if option not in self._attr_options:
+            return
+        int_value = self._attr_options.index(option)
+        datapoint = self._device.datapoints.get_or_create(
+            self._mapping.dp_id,
+            TuyaBLEDataPointType.DT_ENUM,
+            int_value,
+        )
+        if not datapoint:
+            return
+        await datapoint.set_value(int_value)
+        # Optimistic HA state: Raykube often ACKs V4 writes without echoing DP31/DP48.
+        self.async_write_ha_state()
 
 
 async def async_setup_entry(
