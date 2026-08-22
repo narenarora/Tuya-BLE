@@ -314,17 +314,14 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         )
         self._mapping = mapping
         self._attr_options = mapping.description.options
+        # Raykube volume/direction often lack a durable DP echo. Keep last known
+        # option so coordinator updates from lock reverse-sync do not wipe HA state.
+        self._sticky_option: str | None = None
 
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        if self._device.product_id == "hc7n0urm" and self._mapping.dp_id in (31, 48):
-            return True
-        return super().available
+    def _is_raykube_sticky_select(self) -> bool:
+        return self._device.product_id == "hc7n0urm" and self._mapping.dp_id in (31, 48)
 
-    @property
-    def current_option(self) -> str | None:
-        """Return the selected entity option to represent the entity state."""
+    def _option_from_datapoint(self) -> str | None:
         datapoint = self._device.datapoints[self._mapping.dp_id]
         if not datapoint:
             return None
@@ -332,9 +329,27 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         try:
             int_value = int(value)
         except (TypeError, ValueError):
-            return value if isinstance(value, str) else None
+            return value if isinstance(value, str) and value in self._attr_options else None
         if 0 <= int_value < len(self._attr_options):
             return self._attr_options[int_value]
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if self._is_raykube_sticky_select():
+            return True
+        return super().available
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the selected entity option to represent the entity state."""
+        option = self._option_from_datapoint()
+        if option is not None:
+            self._sticky_option = option
+            return option
+        if self._is_raykube_sticky_select() and self._sticky_option in self._attr_options:
+            return self._sticky_option
         return None
 
     async def async_select_option(self, option: str) -> None:
@@ -350,7 +365,10 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         if not datapoint:
             return
         await datapoint.set_value(int_value)
-        # Optimistic HA state: Raykube often ACKs V4 writes without echoing DP31/DP48.
+        # Optimistic + sticky HA state: Raykube often ACKs V4 writes without
+        # echoing DP31/DP48, and later lock events can refresh entities without
+        # those DPs present.
+        self._sticky_option = option
         self.async_write_ha_state()
 
 
