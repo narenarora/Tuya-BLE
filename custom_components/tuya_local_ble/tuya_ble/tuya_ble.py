@@ -1184,6 +1184,47 @@ class TuyaBLEDevice:
         parsed_ranges: list[tuple[int, int]] = []
 
         while len(data) - pos >= 5:
+            # Generic V4 typed status/event frame seen from manual actions:
+            #   <id> <flags:3> <dp_type> <len:2> <value:len>
+            # For Raykube hc7n0urm, flags=0x00002f with DT_BOOL is the only
+            # passive physical lock-state event observed so far:
+            #   true  -> open/unlocked
+            #   false -> closed/locked
+            # This event is only useful when it is actually received over an
+            # active BLE notify session; sleepy battery locks may not report
+            # manual changes while disconnected.
+            if len(data) - pos >= 8:
+                flags = int.from_bytes(data[pos + 1:pos + 4], "big")
+                dp_type = data[pos + 4]
+                typed_len = int.from_bytes(data[pos + 5:pos + 7], "big")
+                typed_value_pos = pos + 7
+                typed_next_pos = typed_value_pos + typed_len
+                if (
+                    flags == 0x00002F
+                    and dp_type == TuyaBLEDataPointType.DT_BOOL.value
+                    and typed_len == 1
+                    and typed_next_pos <= len(data)
+                ):
+                    raw_value = data[typed_value_pos:typed_next_pos]
+                    value = raw_value != b"\x00"
+                    _LOGGER.debug(
+                        "%s: Received Raykube passive lock-state event, flags: 0x%06x, value: %s",
+                        self.address,
+                        flags,
+                        value,
+                    )
+                    self._datapoints._update_from_device(
+                        118,
+                        time.time(),
+                        flags,
+                        TuyaBLEDataPointType.DT_ENUM,
+                        1 if value else 0,
+                    )
+                    datapoints.append(self._datapoints[118])
+                    parsed_ranges.append((pos, typed_next_pos))
+                    pos = typed_next_pos
+                    continue
+
             op = data[pos]
             dp_id = data[pos + 1]
             data_len = int.from_bytes(data[pos + 2:pos + 5], "big")
@@ -1581,12 +1622,19 @@ class TuyaBLEDevice:
         00000000 01 47 000013 ffff 0001 <8 ASCII digits> 01 <4 bytes> 00 01
         """
         if not self.ble_unlock_check:
-            raise TuyaBLEDeviceError(1)
+            raise TuyaBLEDeviceError(
+                "Raykube/hc7n0urm remote unlock requires the "
+                "device-specific ble_unlock_check value in "
+                "tuya_local_ble/devices.json"
+            )
 
         try:
             check = base64.b64decode(self.ble_unlock_check)
         except Exception as exc:
-            raise TuyaBLEDeviceError(1) from exc
+            raise TuyaBLEDeviceError(
+                "Raykube/hc7n0urm ble_unlock_check must be a valid "
+                "base64 Tuya status value"
+            ) from exc
 
         if len(check) < 19:
             raise TuyaBLEDataLengthError()

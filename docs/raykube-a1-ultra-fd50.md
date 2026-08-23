@@ -22,6 +22,19 @@ Adds experimental local BLE support for Raykube A1 Ultra / A1 Pro Max locks usin
 
 Remote unlock and remote lock have both been physically verified. Remote unlock uses a device-specific `ble_unlock_check` V4 payload. Remote lock uses the `manual_lock` datapoint (`46`) in V4 framing.
 
+Manual lock/keypad/physical-key state changes are best effort only by default. The lock can emit a passive V4 state event (`flags=0x00002f`, boolean value; observed as `true` for open/unlocked and `false` for closed/locked), but Home Assistant only sees that event while a BLE notify session is active. If the battery lock is asleep or the integration is disconnected between commands, no datapoint mapping can update the entity until the integration reconnects and receives a notification.
+
+## Opt-in keep connected
+
+Configure the device → **Keep connected (24/7)** (default: off).
+
+| Mode | Behavior |
+|---|---|
+| Off (default) | Connect on demand for commands; advertisement-triggered refresh for best-effort reverse sync. Safer for flaky USB BLE adapters. |
+| On | Persistent BLE session with periodic keepalive NOP (same idea as Gimdow `rlyxv7pe`). Better live reverse sync; preferred when using ESPHome BLE proxies. |
+
+Reload is automatic after changing the option.
+
 ## Required `devices.json` fields
 
 Use the same schema as other devices, with the Raykube product ID:
@@ -43,7 +56,7 @@ Use the same schema as other devices, with the Raykube product ID:
 }
 ```
 
-`ble_unlock_check` is the raw base64 status value reported by Tuya Cloud for the device. It is device-specific and is used to build the V4 remote-unlock command. You can obtain it from the Tuya IoT OpenAPI device details/status response where the status code is `ble_unlock_check`.
+`ble_unlock_check` is the raw base64 status value reported by Tuya Cloud for the device. It is device-specific and is used to build the V4 remote-unlock command. You can obtain it from the Tuya IoT OpenAPI device details/status response where the status code is `ble_unlock_check`. If this field is missing, remote lock can still work but remote unlock cannot be built and will fail with a configuration error.
 
 ## Protocol notes
 

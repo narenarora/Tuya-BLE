@@ -8,8 +8,10 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import (
+    ConfigEntry,
     ConfigFlow,
-    ConfigFlowResult    
+    ConfigFlowResult,
+    OptionsFlow,
 )
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
@@ -22,6 +24,7 @@ from homeassistant.core import callback
 from .tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
 
 from .const import (
+    CONF_KEEP_CONNECTED,
     DOMAIN,
 )
 from .devices import TuyaBLEData, get_device_readable_name
@@ -42,6 +45,14 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         self._data: dict[str, Any] = {}
         self._manager: HASSTuyaBLEDeviceManager | None = None
         self._get_device_info_error = False
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> OptionsFlow:
+        """Get the options flow for this handler."""
+        return TuyaBLEOptionsFlow()
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -131,4 +142,34 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             ),
             errors=errors,
+        )
+
+
+class TuyaBLEOptionsFlow(OptionsFlow):
+    """Handle Tuya BLE options."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage options."""
+        if user_input is not None:
+            # Preserve existing credential/options keys written at setup time.
+            options = dict(self.config_entry.options)
+            options[CONF_KEEP_CONNECTED] = bool(
+                user_input.get(CONF_KEEP_CONNECTED, False)
+            )
+            return self.async_create_entry(title="", data=options)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_KEEP_CONNECTED,
+                        default=bool(
+                            self.config_entry.options.get(CONF_KEEP_CONNECTED, False)
+                        ),
+                    ): bool,
+                }
+            ),
         )

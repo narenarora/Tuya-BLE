@@ -1,12 +1,12 @@
 """The Tuya BLE integration."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import logging
 from typing import Callable
 from datetime import datetime, timedelta
-from threading import Timer
+from threading import Event, Thread
 import time
 
 from homeassistant.components.lock import (
@@ -23,7 +23,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 
-from .const import DOMAIN
+from .const import CONF_KEEP_CONNECTED, DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
@@ -135,21 +135,34 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._commanded_timer = None
         self._datapoint_nop = None
         self._isjammed = False
+        self._keep_connect_stop = Event()
+        self._keep_connect_thread: Thread | None = None
         self._update_attrs()
         if mapping.keep_connect:
-            self._thread = Timer(self._mapping.keep_connect_timer, self.send_nop_request)
-            self._thread.start()
             self._datapoint_nop = device.datapoints.get_or_create(
                 self._mapping.dp_id_nop,
                 TuyaBLEDataPointType.DT_BOOL,
                 False,
             )
+            self._keep_connect_thread = Thread(
+                target=self.send_nop_request,
+                name=f"tuya-ble-keep-connect-{device.address}",
+                daemon=True,
+            )
+            self._keep_connect_thread.start()
 
     def send_nop_request(self):
-        while True:
+        """Periodically touch a dummy DP to keep the BLE session alive."""
+        while not self._keep_connect_stop.wait(self._mapping.keep_connect_timer):
             if self._datapoint_nop:
                 self._hass.create_task(self._datapoint_nop.set_value(True))
-            time.sleep(self._mapping.keep_connect_timer)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop keepalive thread when the entity is removed/reloaded."""
+        self._keep_connect_stop.set()
+        thread = self._keep_connect_thread
+        if thread is not None and thread.is_alive():
+            await self._hass.async_add_executor_job(thread.join, 1.0)
 
     @property
     def is_locked(self) -> bool | None:
@@ -286,9 +299,18 @@ async def async_setup_entry(
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
     entities: list[TuyaBLELock] = []
+    # Raykube: persistent connection is opt-in (default off). Gimdow keeps
+    # hardcoded keep_connect=True for existing behavior.
+    raykube_keep_connected = bool(entry.options.get(CONF_KEEP_CONNECTED, False))
     for mapping in mappings:
-        if mapping.force_add or data.device.datapoints.has_id(
-            mapping.dp_id, mapping.dp_type
+        runtime_mapping = mapping
+        if data.device.product_id == "hc7n0urm":
+            runtime_mapping = replace(
+                mapping,
+                keep_connect=raykube_keep_connected,
+            )
+        if runtime_mapping.force_add or data.device.datapoints.has_id(
+            runtime_mapping.dp_id, runtime_mapping.dp_type
         ):
             entities.append(
                 TuyaBLELock(
@@ -296,7 +318,7 @@ async def async_setup_entry(
                     data.coordinator,
                     data.device,
                     data.product,
-                    mapping,
+                    runtime_mapping,
                 )
             )
     async_add_entities(entities)
