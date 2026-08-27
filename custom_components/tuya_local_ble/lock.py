@@ -224,7 +224,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._attr_is_locking = self.is_locking
         self._attr_is_unlocking = self.is_unlocking
         self._attr_is_locked = self.is_locked
-        self._attr_is_unlocked = not self.is_locked
+        self._attr_is_unlocked = None if self.is_locked is None else not self.is_locked
         self._attr_is_jammed = self.is_jammed
         self._attr_changed_by = super().changed_by
 
