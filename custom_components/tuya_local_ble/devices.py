@@ -205,6 +205,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="Raykube A1 Ultra",
             ),
+            "ikphogdj":  # HL Knob-2, TuyaOS FD50 lock
+            TuyaBLEProductInfo(
+                name="HL Knob-2",
+            ),
         },
     ),    
     "szjqr": TuyaBLECategoryInfo(
