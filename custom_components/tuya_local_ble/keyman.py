@@ -78,7 +78,7 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
             await self.load_device_config()
          
         _LOGGER.warning("Lookup address = '%s'", address)
-        _LOGGER.warning("Available keys = %s", list(self._devices.keys()))
+        _LOGGER.warning("Available keys = %s", list(self._devicedata.keys()))
         
         credentials = self._devicedata.get(address)
 
