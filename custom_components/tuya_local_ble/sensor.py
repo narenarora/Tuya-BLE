@@ -219,6 +219,52 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                     ],
                 ),
             ],
+            "ikphogdj":  # HL Knob-2, TuyaOS FD50 transport
+            [
+                TuyaBLEBatteryMapping(
+                    # dp 8 (residual_electricity), confirmed via HCI capture:
+                    # spontaneous report on connect, value matched the app's
+                    # displayed battery % exactly.
+                    dp_id=8,
+                ),
+                TuyaBLESensorMapping(
+                    # dp 9 (battery_state enum) - present in cloud schema but
+                    # never observed being reported over BLE; kept in case it
+                    # shows up. dp 8 above is the confirmed-working one.
+                    dp_id=9,
+                    description=SensorEntityDescription(
+                        key="battery_state",
+                        icon="mdi:battery",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=[
+                            BATTERY_STATE_HIGH,
+                            BATTERY_STATE_NORMAL,
+                            BATTERY_STATE_LOW,
+                            BATTERY_STATE_LOW,
+                        ],
+                    ),
+                    icons=[
+                        "mdi:battery-check",
+                        "mdi:battery-50",
+                        "mdi:battery-alert",
+                        "mdi:battery-alert",
+                    ],
+                ),
+                TuyaBLESensorMapping(
+                    # dp 12 (unlock_fingerprint). Confirmed via two HCI
+                    # captures with different fingers: values 0 and 5 -
+                    # this is the fingerprint slot index used to unlock,
+                    # not just a trigger flag. No name mapping is available
+                    # locally (that only exists in the app/cloud) - this
+                    # exposes the raw slot number only.
+                    dp_id=12,
+                    description=SensorEntityDescription(
+                        key="last_fingerprint_unlock_slot",
+                        icon="mdi:fingerprint",
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                    ),
+                ),
+            ],
         }
     ),      
     "szjqr": TuyaBLECategorySensorMapping(
