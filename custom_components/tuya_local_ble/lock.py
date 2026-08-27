@@ -26,6 +26,7 @@ from homeassistant.const import (
 from .const import CONF_KEEP_CONNECTED, DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble.const import FD50_LOCK_PRODUCT_IDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class TuyaBLELockMapping:
     keep_connect: bool = False
     dp_type: TuyaBLEDataPointType | None = None
     is_available: TuyaBLELockIsAvailable = None
+    value_means_locked: bool = False
 
 @dataclass
 class TuyaBLELockMapping(TuyaBLELockMapping):
@@ -89,6 +91,26 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     # V4 events are parsed, but the full state model is still unknown.
                     # The entity reflects successful remote unlock after V4 ACK.
                     dp_id=118,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
+            "ikphogdj":  # HL Knob-2, TuyaOS FD50 transport
+            [
+                TuyaBLELockMapping(
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # Confirmed via HCI capture: dp 47 (lock_motor_state) is
+                    # the reliable state signal, including autonomous
+                    # auto-lock events - dp 46 (manual_lock) only fires on
+                    # commanded actions. Polarity confirmed twice: dp47=1
+                    # after unlock, dp47=0 after lock/auto-lock.
+                    dp_id=47,
+                    value_means_locked=False,
                     dp_id_nop=52,
                     keep_connect=False,
                     keep_connect_timer=60,
@@ -230,22 +252,32 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             False,
         )
 
-        if self._device.product_id == "hc7n0urm" and self._target_state == LockState.UNLOCKED:
+        if self._device.product_id in FD50_LOCK_PRODUCT_IDS and self._target_state == LockState.UNLOCKED:
             await datapoint.set_value(True)
+            state_value = False if self._mapping.value_means_locked else True
+            self._device.datapoints._update_from_device(
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+            )
             self._current_state = LockState.UNLOCKED
             self._commanded = False
             self._isjammed = False
             self._update_attrs()
             self.async_write_ha_state()
+            self._hass.create_task(self._device.linger_connected(30))
             return
 
-        if self._device.product_id == "hc7n0urm" and self._target_state == LockState.LOCKED:
+        if self._device.product_id in FD50_LOCK_PRODUCT_IDS and self._target_state == LockState.LOCKED:
             await datapoint.set_value(True)
+            state_value = True if self._mapping.value_means_locked else False
+            self._device.datapoints._update_from_device(
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+            )
             self._current_state = LockState.LOCKED
             self._commanded = False
             self._isjammed = False
             self._update_attrs()
             self.async_write_ha_state()
+            self._hass.create_task(self._device.linger_connected(30))
             return
 
         #Gimdow need true to activate lock/unlock commands
@@ -257,10 +289,11 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     def update_device_state(self):
         datapoint = self._device.datapoints[self._mapping.dp_id]
         if datapoint:
-            if datapoint.value:
-                self._current_state = LockState.UNLOCKED
+            is_set = bool(datapoint.value)
+            if self._mapping.value_means_locked:
+                self._current_state = LockState.LOCKED if is_set else LockState.UNLOCKED
             else:
-                self._current_state = LockState.LOCKED
+                self._current_state = LockState.UNLOCKED if is_set else LockState.LOCKED
             if self._commanded:
                 if ( self._current_state != self._target_state):
                     if ( datetime.now() > self._commanded_timer + timedelta(seconds = 12) ):
@@ -279,7 +312,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if self._device.product_id == "hc7n0urm":
+        if self._device.product_id in FD50_LOCK_PRODUCT_IDS:
             # Battery locks sleep and may not keep an active BLE connection between
             # commands. Allow Home Assistant to call unlock; the command path will
             # establish a connection on demand.
