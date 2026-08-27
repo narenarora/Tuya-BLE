@@ -15,6 +15,13 @@ CHARACTERISTIC_WRITE = "00002b11-0000-1000-8000-00805f9b34fb"
 CHARACTERISTIC_NOTIFY_FD50 = "00000002-0000-1001-8001-00805f9b07d0"
 CHARACTERISTIC_WRITE_FD50 = "00000001-0000-1001-8001-00805f9b07d0"
 
+# jtmspro product_ids that use the TuyaOS FD50 BLE transport (0000fd50 service)
+# and therefore need the DEVICE_INFO payload/protocol-version quirks below,
+# regardless of which DP schema the specific model exposes.
+#   hc7n0urm - Raykube A1 Ultra / A1 Pro Max
+#   ikphogdj - HL Knob-2
+FD50_LOCK_PRODUCT_IDS = ("hc7n0urm", "ikphogdj")
+
 SERVICE_UUID = "0000a201-0000-1000-8000-00805f9b34fb"
 
 MANUFACTURER_DATA_ID = 0x07D0
