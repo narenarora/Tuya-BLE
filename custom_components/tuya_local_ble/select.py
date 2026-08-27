@@ -24,6 +24,7 @@ from .const import (
 )
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble.const import FD50_LOCK_PRODUCT_IDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -128,6 +129,25 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                         options=[
                             "clockwise",
                             "anticlockwise",
+                        ],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+            "ikphogdj":  # HL Knob-2, TuyaOS FD50 transport
+            [
+                # dp 31 (beep_volume) confirmed present in cloud DP schema.
+                # dp 48 (lock_direction) confirmed NOT a valid datapoint for
+                # this product - not present in cloud properties, removed.
+                TuyaBLESelectMapping(
+                    dp_id=31,
+                    description=SelectEntityDescription(
+                        key="beep_volume",
+                        options=[
+                            "mute",
+                            "low",
+                            "normal",
+                            "high",
                         ],
                         entity_category=EntityCategory.CONFIG,
                     ),
@@ -319,7 +339,7 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         self._sticky_option: str | None = None
 
     def _is_raykube_sticky_select(self) -> bool:
-        return self._device.product_id == "hc7n0urm" and self._mapping.dp_id in (31, 48)
+        return self._device.product_id in FD50_LOCK_PRODUCT_IDS and self._mapping.dp_id in (31, 48)
 
     def _option_from_datapoint(self) -> str | None:
         datapoint = self._device.datapoints[self._mapping.dp_id]
