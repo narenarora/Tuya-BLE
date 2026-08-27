@@ -76,9 +76,14 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
         
         if self._devicedata == None:
             await self.load_device_config()
-
+         
+        _LOGGER.warning("Lookup address = '%s'", address)
+        _LOGGER.warning("Available keys = %s", list(self._devices.keys()))
+        
         credentials = self._devicedata.get(address)
 
+        _LOGGER.warning("Credentials = %r", list(self._devicedata.get(address) or []))
+        
         if credentials:
             result = TuyaBLEDeviceCredentials(
                 credentials.get(CONF_UUID, ""),
