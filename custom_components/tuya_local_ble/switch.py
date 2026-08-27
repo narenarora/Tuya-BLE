@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .tuya_ble.const import FD50_LOCK_PRODUCT_IDS
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -154,6 +155,20 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                     description=SwitchEntityDescription(
                         key="carbon_dioxide_alarm_switch",
                         icon="mdi:molecule-co2",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+        },
+    ),
+    "jtmspro": TuyaBLECategorySwitchMapping(
+        products={
+            "ikphogdj": [  # HL Knob-2, TuyaOS FD50 lock
+                TuyaBLESwitchMapping(
+                    dp_id=33,
+                    description=SwitchEntityDescription(
+                        key="automatic_lock",
+                        icon="mdi:lock-clock",
                         entity_category=EntityCategory.CONFIG,
                     ),
                 ),
@@ -371,7 +386,7 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         self._mapping = mapping
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if switch is on."""
 
         if self._mapping.getter:
@@ -419,6 +434,11 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
             new_value = True
         if datapoint:
             self._hass.create_task(datapoint.set_value(new_value))
+            if self._device.product_id in FD50_LOCK_PRODUCT_IDS and self._mapping.dp_id == 33:
+                # automatic_lock: linger briefly (local BLE only, no cloud) to
+                # catch any resulting lock-state push before the device
+                # disconnects itself due to inactivity.
+                self._hass.create_task(self._device.linger_connected(30))
 
     def turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
@@ -446,6 +466,11 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
             new_value = False
         if datapoint:
             self._hass.create_task(datapoint.set_value(new_value))
+            if self._device.product_id in FD50_LOCK_PRODUCT_IDS and self._mapping.dp_id == 33:
+                # automatic_lock: linger briefly (local BLE only, no cloud) to
+                # catch any resulting lock-state push before the device
+                # disconnects itself due to inactivity.
+                self._hass.create_task(self._device.linger_connected(30))
 
     @property
     def available(self) -> bool:
