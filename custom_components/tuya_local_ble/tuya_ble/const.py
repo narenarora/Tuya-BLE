@@ -9,18 +9,11 @@ DEFAULT_ATTEMPTS = 0xFFFF
 CHARACTERISTIC_NOTIFY = "00002b10-0000-1000-8000-00805f9b34fb"
 CHARACTERISTIC_WRITE = "00002b11-0000-1000-8000-00805f9b34fb"
 
-# Newer TuyaOS firmware (e.g. jtmspro hc7n0urm fw 6.0) drops the legacy
+# Newer TuyaOS firmware (e.g. jtmspro hc7n0urm ikphogdj fw 6.0) drops the legacy
 # 0xA201 service and exposes the data channel via these characteristics
 # of the 0xFD50 service instead.
 CHARACTERISTIC_NOTIFY_FD50 = "00000002-0000-1001-8001-00805f9b07d0"
 CHARACTERISTIC_WRITE_FD50 = "00000001-0000-1001-8001-00805f9b07d0"
-
-# jtmspro product_ids that use the TuyaOS FD50 BLE transport (0000fd50 service)
-# and therefore need the DEVICE_INFO payload/protocol-version quirks below,
-# regardless of which DP schema the specific model exposes.
-#   hc7n0urm - Raykube A1 Ultra / A1 Pro Max
-#   ikphogdj - HL Knob-2
-FD50_LOCK_PRODUCT_IDS = ("hc7n0urm", "ikphogdj")
 
 SERVICE_UUID = "0000a201-0000-1000-8000-00805f9b34fb"
 
