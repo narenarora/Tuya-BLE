@@ -160,6 +160,20 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
             ],
         },
     ),
+    "jtmspro": TuyaBLECategorySwitchMapping(
+        products={
+            "ikphogdj": [  # HL Knob-2, TuyaOS FD50 lock
+                TuyaBLESwitchMapping(
+                    dp_id=33,
+                    description=SwitchEntityDescription(
+                        key="automatic_lock",
+                        icon="mdi:lock-clock",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+        },
+    ),
     "ms": TuyaBLECategorySwitchMapping(
         products={
             **dict.fromkeys(
@@ -371,7 +385,7 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         self._mapping = mapping
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if switch is on."""
 
         if self._mapping.getter:
@@ -389,9 +403,10 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
                 for v, m in zip(bitmap_value, bitmap_mask, strict=True):
                     if (v & m) != 0:
                         return True
+                return False
             else:
                 return bool(datapoint.value)
-        return False
+        return None
 
     def turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
@@ -419,6 +434,11 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
             new_value = True
         if datapoint:
             self._hass.create_task(datapoint.set_value(new_value))
+            if self._device.product_id == "ikphogdj" and self._mapping.dp_id == 33:
+                # automatic_lock: linger briefly (local BLE only, no cloud) to
+                # catch any resulting lock-state push before the device
+                # disconnects itself due to inactivity.
+                self._hass.create_task(self._device.linger_connected(30))
 
     def turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
@@ -446,6 +466,8 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
             new_value = False
         if datapoint:
             self._hass.create_task(datapoint.set_value(new_value))
+            if self._device.product_id == "ikphogdj" and self._mapping.dp_id == 33:
+                self._hass.create_task(self._device.linger_connected(30))
 
     @property
     def available(self) -> bool:
