@@ -133,6 +133,9 @@
       "humidity": {
         "name": "[%key:component::sensor::entity_component::humidity::name%]"
       },
+      "last_fingerprint_unlock_slot": {
+        "name": "Last Fingerprint Slot"
+      },
       "moisture": {
         "name": "[%key:component::sensor::entity_component::moisture::name%]"
       },
@@ -165,6 +168,9 @@
       }
     },
     "switch": {
+      "automatic_lock": {
+        "name": "Auto Lock"
+      },
       "programming_mode": {
         "name": "Programming Mode" 
       },
