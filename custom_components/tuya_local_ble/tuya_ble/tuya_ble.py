@@ -650,6 +650,8 @@ class TuyaBLEDevice:
                         device_info_payload = (
                             b"\x00\xf3" if self.product_id == "hc7n0urm" else bytes(0)
                         )
+                        if self.product_id == "ikphogdj":
+                            device_info_payload = b"\x00\xf3"
                         if not await self._send_packet_while_connected(
                             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
                             device_info_payload,
@@ -814,6 +816,8 @@ class TuyaBLEDevice:
                 packet_protocol_version = self._protocol_version
                 if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
                     packet_protocol_version = 2
+                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "ikphogdj":
+                    packet_protocol_version = 2
                 packet += pack(">B", packet_protocol_version << 4)
 
             chunk_mtu = GATT_MTU
@@ -830,6 +834,25 @@ class TuyaBLEDevice:
             packet_num += 1
 
         return command
+
+    async def linger_connected(self, seconds: int, ping_interval: int = 10) -> None:
+        """Stay connected for a bounded window, purely passive - no requests
+        of our own. Sending our own traffic here risks colliding with the
+        device's own asynchronous pushes (e.g. a multi-fragment battery
+        report), corrupting the shared packet-reassembly state. This just
+        gives such pushes a window to arrive; it does not actively prevent
+        the peripheral's own idle-disconnect timer from firing.
+
+        General-purpose utility, not product-specific. Currently only
+        called from ikphogdj (HL Knob-2) code paths.
+        """
+        elapsed = 0
+        while elapsed < seconds:
+            wait = min(ping_interval, seconds - elapsed)
+            await asyncio.sleep(wait)
+            elapsed += wait
+            if self._expected_disconnect or self._client is None or not self._client.is_connected:
+                return
 
     async def _get_seq_num(self) -> int:
         async with self._seq_num_lock:
@@ -871,6 +894,23 @@ class TuyaBLEDevice:
         # retry: int | None = None
     ) -> bool:
         """Send packet to device and optional read response."""
+        # General concurrency fix (not product-specific): the lock used to
+        # only cover the write below, released before awaiting the
+        # response - so two overlapping commands (e.g. a fast double lock
+        # press) could interleave their response tracking and corrupt the
+        # shared reassembly state. Now covers the full send-and-wait cycle.
+        async with self._operation_lock:
+            return await self._send_packet_while_connected_locked(
+                code, data, response_to, wait_for_response
+            )
+
+    async def _send_packet_while_connected_locked(
+        self,
+        code: TuyaBLECode,
+        data: bytes,
+        response_to: int,
+        wait_for_response: bool,
+    ) -> bool:
         result = True
         future: asyncio.Future | None = None
         seq_num = await self._get_seq_num()
@@ -1107,6 +1147,10 @@ class TuyaBLEDevice:
             self._parse_raykube_datapoints_v4(data)
             return
 
+        if self.product_id == "ikphogdj":
+            self._parse_ikphogdj_datapoints_v4(data)
+            return
+
         datapoints: list[TuyaBLEDataPoint] = []
         pos = 4 if len(data) >= 4 else 0
         while len(data) - pos >= 7:
@@ -1328,6 +1372,82 @@ class TuyaBLEDevice:
                 parsed_ranges,
                 data.hex(),
             )
+
+        self._fire_callbacks(datapoints)
+
+    def _parse_ikphogdj_datapoints_v4(self, data: bytes) -> None:
+        """Parse ikphogdj (HL Knob-2) async DP-change-report V4 payloads.
+
+        Confirmed via HCI capture across dp 8, 12, 19, 21, 31, 33, 46, 47
+        (residual_electricity, unlock_fingerprint, unlock_ble, alarm_lock,
+        beep_volume, automatic_lock, manual_lock, lock_motor_state):
+            00 00 00 00 <counter:1> 80 <kind:1> <dp_id:1> <type:1> <len:2> <value:len>
+        `kind` varies (00 seen for action-triggered deltas, 02 seen for an
+        unprompted boot/periodic status report carrying battery %) but the
+        dp_id/type/len/value layout is identical either way, so it's not
+        discriminated on further here.
+        `type` matches TuyaBLEDataPointType's integer values directly
+        (1=bool, 2=value, 3=string, 4=enum, 0/5=raw/bitmap).
+        Unrecognized/malformed frames are ignored rather than raised, since
+        the lock may emit other V4 event bodies we don't understand yet.
+        """
+        datapoints: list[TuyaBLEDataPoint] = []
+
+        if len(data) < 11 or data[0:4] != b"\x00\x00\x00\x00" or data[5] != 0x80:
+            _LOGGER.debug(
+                "%s: Ignoring unrecognized ikphogdj V4 payload: %s",
+                self.address,
+                data.hex(),
+            )
+            self._fire_callbacks(datapoints)
+            return
+
+        dp_id = data[7]
+        type_value = data[8]
+        data_len = int.from_bytes(data[9:11], "big")
+        raw_value = data[11:11 + data_len]
+
+        if len(raw_value) != data_len:
+            _LOGGER.debug(
+                "%s: Truncated ikphogdj V4 payload for dp %s: %s",
+                self.address,
+                dp_id,
+                data.hex(),
+            )
+            self._fire_callbacks(datapoints)
+            return
+
+        try:
+            dp_type = TuyaBLEDataPointType(type_value)
+        except ValueError:
+            _LOGGER.debug(
+                "%s: Unknown ikphogdj V4 datapoint type %s for dp %s",
+                self.address,
+                type_value,
+                dp_id,
+            )
+            self._fire_callbacks(datapoints)
+            return
+
+        match dp_type:
+            case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
+                value = raw_value
+            case TuyaBLEDataPointType.DT_BOOL:
+                value = int.from_bytes(raw_value, "big") != 0
+            case TuyaBLEDataPointType.DT_VALUE | TuyaBLEDataPointType.DT_ENUM:
+                value = int.from_bytes(raw_value, "big", signed=True)
+            case TuyaBLEDataPointType.DT_STRING:
+                value = raw_value.decode(errors="replace")
+
+        _LOGGER.debug(
+            "%s: Received ikphogdj V4 datapoint update, id: %s, type: %s, value: %s",
+            self.address,
+            dp_id,
+            dp_type.name,
+            value,
+        )
+        self._datapoints._update_from_device(dp_id, time.time(), 0, dp_type, value)
+        datapoints.append(self._datapoints[dp_id])
 
         self._fire_callbacks(datapoints)
 
@@ -1608,6 +1728,37 @@ class TuyaBLEDevice:
                 )
             return
 
+        if self.product_id == "ikphogdj":
+            if 6 in datapoint_ids:
+                ikphogdj_unlock_v4_data = self._build_raykube_unlock_v4_data()
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, ikphogdj_unlock_v4_data, True
+                )
+            elif 46 in datapoint_ids:
+                ikphogdj_lock_v4_data = bytes.fromhex("00000000012e00000101")
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, ikphogdj_lock_v4_data, True
+                )
+            elif 33 in datapoint_ids:
+                # automatic_lock, confirmed real V4 format via HCI capture.
+                ikphogdj_autolock_v4_data = self._build_ikphogdj_v4_bool_data(33)
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, ikphogdj_autolock_v4_data, True
+                )
+            elif set(datapoint_ids).issubset({31}):
+                for dp_id in datapoint_ids:
+                    ikphogdj_v4_data = self._build_ikphogdj_v4_enum_data(dp_id)
+                    await self._send_packet(
+                        TuyaBLECode.FUN_SENDER_DPS_V4, ikphogdj_v4_data, True
+                    )
+            else:
+                _LOGGER.debug(
+                    "%s: Skipping unsupported ikphogdj datapoint write: %s",
+                    self.address,
+                    datapoint_ids,
+                )
+            return
+
         #await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data)
         await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data, False)
 
@@ -1652,6 +1803,34 @@ class TuyaBLEDevice:
             raise TuyaBLEDataLengthError()
         return b"\x00\x00\x00\x00\x01" + bytes([dp_id]) + len(value).to_bytes(3, "big") + value
 
+    def _build_ikphogdj_v4_scalar_data(self, dp_id: int, dp_type: int) -> bytes:
+        """Build an ikphogdj (HL Knob-2) V4 write for a simple scalar
+        datapoint. Confirmed against real captured traffic 
+        (lock dp 46, automatic_lock dp 33, beep_volume dp 31):
+            00 00 00 00 <counter=01> <dp_id> <type> <len:2> <value:len>
+        counter stays 01 since each command runs on its own fresh connection
+        (keep_connect=False for this product).
+        dp_type: 0x01 = bool, 0x04 = enum (standard Tuya DP type codes).
+        """
+        dp = self._datapoints[dp_id]
+        value = dp._get_value()
+        if len(value) != 1:
+            raise TuyaBLEDataLengthError()
+        return (
+            b"\x00\x00\x00\x00\x01"
+            + bytes([dp_id, dp_type])
+            + len(value).to_bytes(2, "big")
+            + value
+        )
+
+    def _build_ikphogdj_v4_enum_data(self, dp_id: int) -> bytes:
+        """Build an ikphogdj V4 enum write (e.g. beep_volume)."""
+        return self._build_ikphogdj_v4_scalar_data(dp_id, dp_type=0x04)
+
+    def _build_ikphogdj_v4_bool_data(self, dp_id: int) -> bytes:
+        """Build an ikphogdj V4 bool write (e.g. automatic_lock)."""
+        return self._build_ikphogdj_v4_scalar_data(dp_id, dp_type=0x01)
+
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
         if self.product_id == "hc7n0urm" and 6 in datapoint_ids:
@@ -1668,6 +1847,15 @@ class TuyaBLEDevice:
             # Beep volume and lock direction use the same command-style V4
             # write framing as DP46 and must be allowed before protocol_version
             # is known on sleepy battery locks.
+            await self._send_datapoints_v3(datapoint_ids)
+            return
+
+        if self.product_id == "ikphogdj" and (
+            6 in datapoint_ids
+            or 46 in datapoint_ids
+            or 33 in datapoint_ids
+            or set(datapoint_ids).issubset({31})
+        ):
             await self._send_datapoints_v3(datapoint_ids)
             return
 
