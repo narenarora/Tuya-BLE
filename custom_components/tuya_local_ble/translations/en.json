@@ -132,6 +132,9 @@
         "humidity": {
           "name": "Humidity"
         },
+        "last_fingerprint_unlock_slot": {
+          "name": "Last Fingerprint Slot"
+        },
         "moisture": {
           "name": "Moisture"
         },
@@ -164,6 +167,9 @@
         }
       },
       "switch": {
+        "automatic_lock": {
+          "name": "Auto Lock"
+        },
         "programming_mode": {
           "name": "Programming Mode" 
         },
