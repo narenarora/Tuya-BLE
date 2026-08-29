@@ -954,6 +954,10 @@ class TuyaBLEDevice:
         self,
         packets: list[bytes],
     ) -> None:
+        """Commenting this out to prevent a race condition on rare-event concurrent calls.
+        product_id ikphogdj doesn't work if this code is enabled
+        """
+        """
         if self._operation_lock.locked():
             _LOGGER.debug(
                 "%s: Operation already in progress, "
@@ -962,6 +966,7 @@ class TuyaBLEDevice:
                 self.rssi,
             )
         async with self._operation_lock:
+        """
             try:
                 await self._send_packets_locked(packets)
             except BleakNotFoundError:
