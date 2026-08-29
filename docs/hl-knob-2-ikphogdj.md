@@ -28,7 +28,7 @@ Use the same schema as other devices, with the HL Knob-2 product ID:
 
 `ble_unlock_check` is the raw base64 status value reported by Tuya Cloud for the device. It is device-specific and is used to build the V4 remote-unlock command. You can obtain it from the Tuya IoT OpenAPI device details/status response where the status code is `ble_unlock_check`. If this field is missing, remote lock can still work but remote unlock cannot be built and will fail with a configuration error.
 
-Please note : In some cases, the BLE address if the device shown in Tuya / Smartlife app is the 'reverse' of the actual BLE address. So if the entry for `A1:B2:C3:D4:E5:F6` doesn't detect your device, try `6F:5E:4D:3C:2B:1A` (both levels)
+Please note : In some cases, the BLE address of the device shown in Tuya / Smartlife app is the 'reverse' of the actual BLE address. So if the entry for `A1:B2:C3:D4:E5:F6` in `devices.json` doesn't detect your device, try `6F:5E:4D:3C:2B:1A` (both levels)
 
 When the device is newly added, or on every HA restart, all entities show a 'default' state, which is not in sync with actual live states. 
 Once the `Lock Control` or `Auto Lock` or `Lock Volume` are set from HA, going ahead it will usually stay in sync.
