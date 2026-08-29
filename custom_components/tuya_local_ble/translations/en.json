@@ -161,6 +161,9 @@
         },
         "time_left": {
             "name": "Remaining irrigation time"
+        },
+        "propane": {
+            "name": "Propane"
         }
       },
       "switch": {

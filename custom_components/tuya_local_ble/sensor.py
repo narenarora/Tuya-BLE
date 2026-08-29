@@ -23,6 +23,7 @@ from homeassistant.const import (
     UnitOfVolume,
     UnitOfTemperature,
     UnitOfTime,
+    UnitOfElectricPotential,
     UnitOfRatio,
 )
 from homeassistant.core import HomeAssistant, callback
@@ -144,6 +145,41 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                         device_class=SensorDeviceClass.HUMIDITY,
                         native_unit_of_measurement=PERCENTAGE,
                         state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+            ]
+        }
+    ),
+    "ldcg": TuyaBLECategorySensorMapping(
+        products={
+            "poaanotz": [  # Briidea RV CO And Propane Gas Alarm
+                TuyaBLESensorMapping(
+                    dp_id=2,
+                    description=SensorEntityDescription(
+                        key="propane",
+                        icon="mdi:gas-cylinder",
+                        native_unit_of_measurement="%LEL",
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=8,
+                    description=SensorEntityDescription(
+                        key="carbon_monoxide",
+                        device_class=SensorDeviceClass.CO,
+                        native_unit_of_measurement=UnitOfRatio.PARTS_PER_MILLION,
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=4,
+                    coefficient=10.0,
+                    description=SensorEntityDescription(
+                        key="supply_voltage",
+                        device_class=SensorDeviceClass.VOLTAGE,
+                        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+                        state_class=SensorStateClass.MEASUREMENT,
+                        entity_category=EntityCategory.DIAGNOSTIC,
                     ),
                 ),
             ]

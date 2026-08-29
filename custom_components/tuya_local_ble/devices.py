@@ -182,6 +182,13 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
         },
     ),
+    "ldcg": TuyaBLECategoryInfo(
+        products={
+            "poaanotz": TuyaBLEProductInfo(  # device product_id
+                name="RV CO And Propane Gas Alarm",
+            ),
+        },
+    ),
     "ms": TuyaBLECategoryInfo(
         products={
             **dict.fromkeys(
