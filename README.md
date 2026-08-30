@@ -118,6 +118,12 @@
       <td>Measures CO2 concentrations.</td>
     </tr>
     <tr>
+      <td>Luminance sensors<br>(ldcg)</td>
+      <td>RV CO And Propane Gas Alarm</td>
+      <td>'poaanotz'</td>
+      <td>Measures CO and Propane concentrations.</td>
+    </tr>
+    <tr>
       <td>Smart Locks<br>(ms)</td>
       <td>Smart Lock</td>
       <td>'ludzroix', 'isk2p555'</td>
