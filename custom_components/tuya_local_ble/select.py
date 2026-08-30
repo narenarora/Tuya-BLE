@@ -160,6 +160,25 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                     ),
                 ),
             ],
+            "ikphogdj":  # HL Knob-2, TuyaOS FD50 transport
+            [
+                # dp 31 (beep_volume) confirmed present in cloud DP schema.
+                # dp 48 (lock_direction) confirmed NOT a valid datapoint for
+                # this product - not present in cloud properties, removed.
+                TuyaBLESelectMapping(
+                    dp_id=31,
+                    description=SelectEntityDescription(
+                        key="beep_volume",
+                        options=[
+                            "mute",
+                            "low",
+                            "normal",
+                            "high",
+                        ],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
         }
     ),    
     "szjqr": TuyaBLECategorySelectMapping(
@@ -319,7 +338,11 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         self._sticky_option: str | None = None
 
     def _is_raykube_sticky_select(self) -> bool:
-        return self._device.product_id == "hc7n0urm" and self._mapping.dp_id in (31, 48)
+        if self._device.product_id == "hc7n0urm":
+            return self._mapping.dp_id in (31, 48)
+        if self._device.product_id == "ikphogdj":
+            return self._mapping.dp_id in (31, 48)
+        return False
 
     def _option_from_datapoint(self) -> str | None:
         datapoint = self._device.datapoints[self._mapping.dp_id]

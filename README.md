@@ -61,6 +61,8 @@
   You can obtain the device MAC address, UUID, local key, device ID, and product ID using [TinyTuya](https://github.com/jasonacox/tinytuya).
 
   Raykube A1 Ultra / A1 Pro Max (`hc7n0urm`) devices also require the device-specific `ble_unlock_check` value in `devices.json` for remote unlock. Without it, locking may work but unlocking will fail before a BLE command is built. See [`docs/raykube-a1-ultra-fd50.md`](docs/raykube-a1-ultra-fd50.md).
+
+  HL Knob-2 (`ikphogdj`) devices also require the device-specific `ble_unlock_check` value in `devices.json` for remote unlock. Without it, locking may work but unlocking will fail before a BLE command is built. See [`docs/hl-knob-2-ikphogdj.md`](docs/hl-knob-2-ikphogdj.md).
 </p>
 
 <h2 align="center">Supported Devices</h2>
@@ -125,8 +127,8 @@
     </tr>
     <tr>
       <td>Smart Locks<br>(jtmspro)</td>
-      <td>Raykube A1 Ultra / A1 Pro Max</td>
-      <td>'rlyxv7pe', 'hc7n0urm'</td>
+      <td>Raykube A1 Ultra / A1 Pro Max / HL Knob-2</td>
+      <td>'rlyxv7pe', 'hc7n0urm', 'ikphogdj'</td>
       <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>
