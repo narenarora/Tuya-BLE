@@ -118,6 +118,24 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     ),
                 ),
             ],
+            "c6hfl8bt":  # MYPIN HS0358 cabinet lock, TuyaOS FD50 transport
+            [
+                TuyaBLELockMapping(
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # Same standardized jtmspro/FD50 DP schema as ikphogdj/
+                    # hc7n0urm (dp 47 = lock_motor_state); polarity not yet
+                    # confirmed against physical unlock/lock for this device.
+                    dp_id=47,
+                    value_means_locked=False,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
         }
     ), 
 }

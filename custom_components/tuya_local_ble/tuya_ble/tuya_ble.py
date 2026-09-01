@@ -1732,7 +1732,7 @@ class TuyaBLEDevice:
                 )
             return
 
-        if self.product_id == "ikphogdj":
+        if self.product_id in ("ikphogdj", "c6hfl8bt"):
             if 6 in datapoint_ids:
                 ikphogdj_unlock_v4_data = self._build_raykube_unlock_v4_data()
                 await self._send_packet(
@@ -1757,7 +1757,7 @@ class TuyaBLEDevice:
                     )
             else:
                 _LOGGER.debug(
-                    "%s: Skipping unsupported ikphogdj datapoint write: %s",
+                    "%s: Skipping unsupported ikphogdj/c6hfl8bt datapoint write: %s",
                     self.address,
                     datapoint_ids,
                 )
@@ -1778,17 +1778,16 @@ class TuyaBLEDevice:
         """
         if not self.ble_unlock_check:
             raise TuyaBLEDeviceError(
-                "Raykube/hc7n0urm remote unlock requires the "
-                "device-specific ble_unlock_check value in "
-                "tuya_local_ble/devices.json"
+                "This TuyaOS FD50 lock (Raykube/hc7n0urm, ikphogdj, "
+                "c6hfl8bt) requires the device-specific ble_unlock_check "
+                "value in tuya_local_ble/devices.json"
             )
 
         try:
             check = base64.b64decode(self.ble_unlock_check)
         except Exception as exc:
             raise TuyaBLEDeviceError(
-                "Raykube/hc7n0urm ble_unlock_check must be a valid "
-                "base64 Tuya status value"
+                "ble_unlock_check must be a valid base64 Tuya status value"
             ) from exc
 
         if len(check) < 19:
@@ -1854,7 +1853,7 @@ class TuyaBLEDevice:
             await self._send_datapoints_v3(datapoint_ids)
             return
 
-        if self.product_id == "ikphogdj" and (
+        if self.product_id in ("ikphogdj", "c6hfl8bt") and (
             6 in datapoint_ids
             or 46 in datapoint_ids
             or 33 in datapoint_ids
