@@ -235,6 +235,7 @@ class TuyaBLEDevice:
 
         self._characteristic_notify = CHARACTERISTIC_NOTIFY
         self._characteristic_write = CHARACTERISTIC_WRITE
+        self._uses_fd50_channel = False
 
         self._is_bound = False
         self._flags = 0
@@ -563,6 +564,7 @@ class TuyaBLEDevice:
             )
             self._characteristic_notify = CHARACTERISTIC_NOTIFY_FD50
             self._characteristic_write = CHARACTERISTIC_WRITE_FD50
+            self._uses_fd50_channel = True
 
     async def _ensure_connected(self) -> None:
         """Ensure connection to device is established."""
@@ -647,11 +649,16 @@ class TuyaBLEDevice:
                     _LOGGER.debug(
                         "%s: Sending device info request", self.address)
                     try:
+                        # Any device negotiating the FD50 GATT channel needs the
+                        # same TuyaOS device-info handshake as hc7n0urm/ikphogdj.
                         device_info_payload = (
-                            b"\x00\xf3" if self.product_id == "hc7n0urm" else bytes(0)
+                            b"\x00\xf3"
+                            if (
+                                self.product_id in ("hc7n0urm", "ikphogdj")
+                                or self._uses_fd50_channel
+                            )
+                            else bytes(0)
                         )
-                        if self.product_id == "ikphogdj":
-                            device_info_payload = b"\x00\xf3"
                         if not await self._send_packet_while_connected(
                             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
                             device_info_payload,
@@ -814,14 +821,16 @@ class TuyaBLEDevice:
             if packet_num == 0:
                 packet += self._pack_int(length)
                 packet_protocol_version = self._protocol_version
-                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
-                    packet_protocol_version = 2
-                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "ikphogdj":
+                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and (
+                    self.product_id in ("hc7n0urm", "ikphogdj") or self._uses_fd50_channel
+                ):
                     packet_protocol_version = 2
                 packet += pack(">B", packet_protocol_version << 4)
 
             chunk_mtu = GATT_MTU
-            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
+            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and (
+                self.product_id in ("hc7n0urm", "ikphogdj") or self._uses_fd50_channel
+            ):
                 # TuyaOS FD50 locks use MTU exchange and expect DEVICE_INFO in one write.
                 chunk_mtu = 244
             data_part = encrypted[
@@ -954,36 +963,26 @@ class TuyaBLEDevice:
         self,
         packets: list[bytes],
     ) -> None:
-        """Commenting this out to prevent a race condition on rare-event concurrent calls.
-        product_id ikphogdj doesn't work if this code is enabled
-        """
-        """
-        if self._operation_lock.locked():
-            _LOGGER.debug(
-                "%s: Operation already in progress, "
-                "waiting for it to complete; RSSI: %s",
+        # The operation_lock acquire/wait-and-log block used to be here but is
+        # disabled: product_id ikphogdj doesn't work if this code is enabled
+        # (causes a race condition on rare-event concurrent calls).
+        try:
+            await self._send_packets_locked(packets)
+        except BleakNotFoundError:
+            _LOGGER.error(
+                "%s: device not found, no longer in range, or poor RSSI: %s",
                 self.address,
                 self.rssi,
+                exc_info=True,
             )
-        async with self._operation_lock:
-        """
-            try:
-                await self._send_packets_locked(packets)
-            except BleakNotFoundError:
-                _LOGGER.error(
-                    "%s: device not found, no longer in range, or poor RSSI: %s",
-                    self.address,
-                    self.rssi,
-                    exc_info=True,
-                )
-                raise
-            except BLEAK_EXCEPTIONS:
-                _LOGGER.error(
-                    "%s: communication failed",
-                    self.address,
-                    exc_info=True,
-                )
-                raise
+            raise
+        except BLEAK_EXCEPTIONS:
+            _LOGGER.error(
+                "%s: communication failed",
+                self.address,
+                exc_info=True,
+            )
+            raise
 
     async def _resend_packets(self, packets: list[bytes]) -> None:
         if self._expected_disconnect:
@@ -1733,7 +1732,7 @@ class TuyaBLEDevice:
                 )
             return
 
-        if self.product_id == "ikphogdj":
+        if self.product_id in ("ikphogdj", "c6hfl8bt"):
             if 6 in datapoint_ids:
                 ikphogdj_unlock_v4_data = self._build_raykube_unlock_v4_data()
                 await self._send_packet(
@@ -1758,7 +1757,7 @@ class TuyaBLEDevice:
                     )
             else:
                 _LOGGER.debug(
-                    "%s: Skipping unsupported ikphogdj datapoint write: %s",
+                    "%s: Skipping unsupported ikphogdj/c6hfl8bt datapoint write: %s",
                     self.address,
                     datapoint_ids,
                 )
@@ -1779,17 +1778,16 @@ class TuyaBLEDevice:
         """
         if not self.ble_unlock_check:
             raise TuyaBLEDeviceError(
-                "Raykube/hc7n0urm remote unlock requires the "
-                "device-specific ble_unlock_check value in "
-                "tuya_local_ble/devices.json"
+                "This TuyaOS FD50 lock (Raykube/hc7n0urm, ikphogdj, "
+                "c6hfl8bt) requires the device-specific ble_unlock_check "
+                "value in tuya_local_ble/devices.json"
             )
 
         try:
             check = base64.b64decode(self.ble_unlock_check)
         except Exception as exc:
             raise TuyaBLEDeviceError(
-                "Raykube/hc7n0urm ble_unlock_check must be a valid "
-                "base64 Tuya status value"
+                "ble_unlock_check must be a valid base64 Tuya status value"
             ) from exc
 
         if len(check) < 19:
@@ -1855,7 +1853,7 @@ class TuyaBLEDevice:
             await self._send_datapoints_v3(datapoint_ids)
             return
 
-        if self.product_id == "ikphogdj" and (
+        if self.product_id in ("ikphogdj", "c6hfl8bt") and (
             6 in datapoint_ids
             or 46 in datapoint_ids
             or 33 in datapoint_ids
