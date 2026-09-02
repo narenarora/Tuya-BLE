@@ -133,8 +133,8 @@
     </tr>
     <tr>
       <td>Smart Locks<br>(jtmspro)</td>
-      <td>Raykube A1 Ultra / A1 Pro Max / HL Knob-2</td>
-      <td>'rlyxv7pe', 'hc7n0urm', 'ikphogdj'</td>
+      <td>Raykube A1 Ultra / A1 Pro Max / HL Knob-2 / MYPIN HS0358</td>
+      <td>'rlyxv7pe', 'hc7n0urm', 'ikphogdj', 'c6hfl8bt'</td>
       <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>
