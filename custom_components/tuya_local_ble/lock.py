@@ -98,6 +98,22 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     ),
                 ),
             ],
+            "y2yaegze":  # CTL20H SmartLock - TuyaOS FD50
+            [
+                TuyaBLELockMapping(
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # Physical DP47 is mirrored to synthetic DP118 by the
+                    # Raykube V4 parser. 0=locked, 1=unlocked.
+                    dp_id=118,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
             "ikphogdj":  # HL Knob-2, TuyaOS FD50 transport
             [
                 TuyaBLELockMapping(
@@ -269,7 +285,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             False,
         )
 
-        if self._device.product_id == "hc7n0urm" and self._target_state == LockState.UNLOCKED:
+        if self._device.product_id in ("hc7n0urm", "y2yaegze") and self._target_state == LockState.UNLOCKED:
             await datapoint.set_value(True)
             self._current_state = LockState.UNLOCKED
             self._commanded = False
@@ -278,7 +294,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             self.async_write_ha_state()
             return
 
-        if self._device.product_id == "hc7n0urm" and self._target_state == LockState.LOCKED:
+        if self._device.product_id in ("hc7n0urm", "y2yaegze") and self._target_state == LockState.LOCKED:
             await datapoint.set_value(True)
             self._current_state = LockState.LOCKED
             self._commanded = False
@@ -351,7 +367,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if self._device.product_id == "hc7n0urm":
+        if self._device.product_id in ("hc7n0urm", "y2yaegze"):
             # Battery locks sleep and may not keep an active BLE connection between
             # commands. Allow Home Assistant to call unlock; the command path will
             # establish a connection on demand.
@@ -379,7 +395,7 @@ async def async_setup_entry(
     raykube_keep_connected = bool(entry.options.get(CONF_KEEP_CONNECTED, False))
     for mapping in mappings:
         runtime_mapping = mapping
-        if data.device.product_id == "hc7n0urm":
+        if data.device.product_id in ("hc7n0urm", "y2yaegze"):
             runtime_mapping = replace(
                 mapping,
                 keep_connect=raykube_keep_connected,

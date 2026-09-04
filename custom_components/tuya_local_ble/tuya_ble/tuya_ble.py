@@ -1147,7 +1147,7 @@ class TuyaBLEDevice:
         value:len.  Only safe configuration/status datapoints are surfaced for
         that lock; ambiguous lock-state events are intentionally ignored.
         """
-        if self.product_id == "hc7n0urm":
+        if self.product_id in ("hc7n0urm", "y2yaegze"):
             self._parse_raykube_datapoints_v4(data)
             return
 
@@ -1191,12 +1191,12 @@ class TuyaBLEDevice:
                 type.name,
                 value,
             )
-            if self.product_id != "hc7n0urm":
+            if self.product_id not in ("hc7n0urm", "y2yaegze"):
                 self._datapoints._update_from_device(id, time.time(), flags, type, value)
                 datapoints.append(self._datapoints[id])
 
             if (
-                self.product_id == "hc7n0urm"
+                self.product_id in ("hc7n0urm", "y2yaegze")
                 and type == TuyaBLEDataPointType.DT_RAW
                 and raw_value == b"\x00\x01\x01"
                 and not self._input_expected_responses
@@ -1228,6 +1228,62 @@ class TuyaBLEDevice:
         malformed/unknown frames instead of raising.
         """
         datapoints: list[TuyaBLEDataPoint] = []
+        # CTL20H initial bulk status snapshot.
+        # DP8 is battery percentage encoded as a 4-byte Tuya VALUE.
+        # DP47 is the physical lock state: 0=locked, 1=unlocked.
+        if self.product_id == "y2yaegze" and len(data) > 20:
+            battery_marker = b"\x08\x02\x00\x04"
+            battery_pos = data.find(battery_marker)
+
+            if (
+                battery_pos >= 0
+                and battery_pos + len(battery_marker) + 4 <= len(data)
+            ):
+                battery_raw = data[
+                    battery_pos + len(battery_marker):
+                    battery_pos + len(battery_marker) + 4
+                ]
+                battery_value = int.from_bytes(
+                    battery_raw,
+                    "big",
+                    signed=False,
+                )
+
+                if 0 <= battery_value <= 100:
+                    self._datapoints._update_from_device(
+                        8,
+                        time.time(),
+                        0,
+                        TuyaBLEDataPointType.DT_VALUE,
+                        battery_value,
+                    )
+                    datapoints.append(self._datapoints[8])
+
+            state_marker = b"\x2f\x01\x00\x01"
+            state_pos = data.find(state_marker)
+
+            if state_pos >= 0 and state_pos + len(state_marker) < len(data):
+                state_raw = data[state_pos + len(state_marker)]
+
+                if state_raw in (0, 1):
+                    self._datapoints._update_from_device(
+                        47,
+                        time.time(),
+                        0,
+                        TuyaBLEDataPointType.DT_BOOL,
+                        bool(state_raw),
+                    )
+
+                    # Mirror physical DP47 to the synthetic state datapoint
+                    # already used by the Raykube passive-state event path.
+                    self._datapoints._update_from_device(
+                        118,
+                        time.time(),
+                        0,
+                        TuyaBLEDataPointType.DT_ENUM,
+                        state_raw,
+                    )
+                    datapoints.append(self._datapoints[118])
         pos = 0
         parsed_ranges: list[tuple[int, int]] = []
 
@@ -1703,7 +1759,7 @@ class TuyaBLEDevice:
             data += pack(">BBB", dp.id, int(dp.type.value), len(value))
             data += value
 
-        if self.product_id == "hc7n0urm":
+        if self.product_id in ("hc7n0urm", "y2yaegze"):
             if 6 in datapoint_ids:
                 # Raykube A1 Ultra / TuyaOS FD50 remote unlock command captured
                 # from the official app. It is built from the per-device
@@ -1836,17 +1892,17 @@ class TuyaBLEDevice:
 
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
-        if self.product_id == "hc7n0urm" and 6 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze") and 6 in datapoint_ids:
             # This battery lock may be disconnected after Home Assistant startup,
             # so protocol_version can still be unknown here. The Raykube V4 path
             # establishes BLE connection and performs DEVICE_INFO/PAIR on demand.
             await self._send_datapoints_v3(datapoint_ids)
             return
-        if self.product_id == "hc7n0urm" and 46 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze") and 46 in datapoint_ids:
             # Candidate physical lock command; allow on-demand connect.
             await self._send_datapoints_v3(datapoint_ids)
             return
-        if self.product_id == "hc7n0urm" and set(datapoint_ids).issubset({31, 48}):
+        if self.product_id in ("hc7n0urm", "y2yaegze") and set(datapoint_ids).issubset({31, 48}):
             # Beep volume and lock direction use the same command-style V4
             # write framing as DP46 and must be allowed before protocol_version
             # is known on sleepy battery locks.
