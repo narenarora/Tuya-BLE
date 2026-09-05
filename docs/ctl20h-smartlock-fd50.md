@@ -94,16 +94,3 @@ Remote unlock uses the inherited Raykube V4 unlock mechanism and requires the de
 ## Battery hardware used during testing
 
 The tested lock used four rechargeable AAA cells, 700 mAh each. This is installation information only; it is not required by the integration protocol.
-
-## Security
-
-Never post or commit:
-
-- `local_key`
-- real `devices.json`
-- raw `ble_unlock_check`
-- device UUID
-- Tuya device ID
-- unnecessary real MAC address
-
-Sanitize logs and packet captures before sharing them publicly.
