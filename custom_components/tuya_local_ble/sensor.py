@@ -232,6 +232,13 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                     ],
                 ),
             ],
+            "y2yaegze":  # CTL20H SmartLock, TuyaOS FD50
+            [
+                TuyaBLEBatteryMapping(
+                    # DP8 is a 4-byte Tuya VALUE containing battery percentage.
+                    dp_id=8,
+                ),
+            ],
             "hc7n0urm":  # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
             [
                 TuyaBLESensorMapping(
